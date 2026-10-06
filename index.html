@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
   <title>Le Serpent</title>
   <style>
-    :root { --bg: #0f172a; --fg: #f8fafc; --muted: #94a3b8; --serpent: #22c55e; --pomme: #f43f5e; --grille: #1e293b; }
+    :root { --bg: #0f172a; --fg: #f8fafc; --muted: #94a3b8; --serpent: #a855f7; --pomme: #f43f5e; --grille: #1e293b; }
     * { box-sizing: border-box; }
     body {
       margin: 0; min-height: 100vh; background: var(--bg); color: var(--fg);
@@ -24,7 +24,7 @@
     p { margin: 0; color: var(--muted); }
     button {
       font: inherit; font-weight: 700; border: 0; border-radius: 999px; cursor: pointer;
-      background: var(--serpent); color: #052e16; font-size: 20px; padding: 14px 32px;
+      background: var(--serpent); color: #3b0764; font-size: 20px; padding: 14px 32px;
     }
     #croix { display: grid; grid-template-columns: repeat(3, 64px); grid-template-rows: repeat(2, 56px); gap: 8px; }
     #croix button { border-radius: 14px; padding: 0; font-size: 24px; background: var(--grille); color: var(--fg); }
@@ -124,7 +124,7 @@
       ctx.arc(pomme.x * T + T / 2, pomme.y * T + T / 2, T / 2 - 2, 0, Math.PI * 2);
       ctx.fill();
       serpent.forEach((s, i) => {
-        ctx.fillStyle = i === 0 ? '#86efac' : '#22c55e';
+        ctx.fillStyle = i === 0 ? '#d8b4fe' : '#a855f7';
         ctx.beginPath();
         ctx.roundRect(s.x * T + 1, s.y * T + 1, T - 2, T - 2, 5);
         ctx.fill();
