@@ -20,6 +20,9 @@
       position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
       gap: 14px; text-align: center; padding: 16px; background: rgba(15, 23, 42, .85); border-radius: 12px;
     }
+    #pouvoir { min-height: 1.2em; }
+    .legende { display: grid; grid-template-columns: auto auto; gap: 4px 10px; text-align: left; font-size: 14px; color: var(--muted); }
+    .legende i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
     h1 { margin: 0; font-size: 36px; }
     p { margin: 0; color: var(--muted); }
     button {
@@ -38,6 +41,7 @@
 <body>
   <header>
     <span>Score : <span id="score">0</span></span>
+    <span id="pouvoir"></span>
     <span>Record : <span id="record">0</span></span>
   </header>
   <div id="cadre">
@@ -45,6 +49,12 @@
     <div id="ecran">
       <h1>🐍 Le Serpent</h1>
       <p>Mange les pommes sans te cogner<br>contre les murs ni les rochers.<br>Flèches du clavier, ou glisse le doigt sur mobile.</p>
+      <div class="legende">
+        <span><i style="background:#facc15"></i>Dorée : +3 points</span>
+        <span><i style="background:#38bdf8"></i>Glacée : ralentit</span>
+        <span><i style="background:#c084fc"></i>Fantôme : traverse tout</span>
+        <span><i style="background:#4ade80"></i>Mini : raccourcit</span>
+      </div>
       <button id="jouer">Jouer</button>
     </div>
   </div>
@@ -61,12 +71,13 @@
     const ecran = document.getElementById('ecran');
     const scoreEl = document.getElementById('score');
     const recordEl = document.getElementById('record');
+    const pouvoirEl = document.getElementById('pouvoir');
 
     const CASES = 20;
     const T = canvas.width / CASES; // taille d'une case en pixels
     const DIRS = { haut: [0, -1], bas: [0, 1], gauche: [-1, 0], droite: [1, 0] };
 
-    let serpent, dir, fileDirs, pomme, obstacles, score, boucle, enJeu = false;
+    let serpent, dir, fileDirs, pomme, superPomme, pouvoir, obstacles, score, boucle, enJeu = false;
     let record = 0;
     try { record = Number(localStorage.getItem('record-serpent')) || 0; } catch (e) {}
     recordEl.textContent = record;
@@ -74,7 +85,19 @@
     const OBSTACLES_DEPART = 6;
     const POMMES_PAR_OBSTACLE = 5; // un rocher de plus toutes les 5 pommes
 
+    // Pommes à super pouvoir : elles apparaissent parfois et disparaissent si on tarde trop.
+    // Les durées sont comptées en tours de jeu (un tour = un déplacement du serpent).
+    const SUPER_POMMES = {
+      or:      { couleur: '#facc15', nom: '⭐ +3 points' },
+      glace:   { couleur: '#38bdf8', nom: '❄️ Ralenti', duree: 40 },
+      fantome: { couleur: '#c084fc', nom: '👻 Fantôme', duree: 40 },
+      mini:    { couleur: '#4ade80', nom: '✂️ Raccourci' },
+    };
+    const CHANCE_SUPER_POMME = 0.35; // après chaque pomme normale
+    const VIE_SUPER_POMME = 45;
+
     const occupe = (liste, p) => liste.some(s => s.x === p.x && s.y === p.y);
+    const surCase = (a, b) => a && b && a.x === b.x && a.y === b.y;
 
     function caseAuHasard() {
       return { x: Math.floor(Math.random() * CASES), y: Math.floor(Math.random() * CASES) };
@@ -82,8 +105,43 @@
 
     function nouvellePomme() {
       let p;
-      do { p = caseAuHasard(); } while (occupe(serpent, p) || occupe(obstacles, p));
+      do { p = caseAuHasard(); } while (
+        occupe(serpent, p) || occupe(obstacles, p) || surCase(p, pomme) || surCase(p, superPomme)
+      );
       return p;
+    }
+
+    function nouvelleSuperPomme() {
+      const types = Object.keys(SUPER_POMMES);
+      superPomme = {
+        ...nouvellePomme(),
+        type: types[Math.floor(Math.random() * types.length)],
+        vie: VIE_SUPER_POMME,
+      };
+    }
+
+    // Ajoute des points et pose un rocher à chaque palier de 5 franchi
+    function ajouterPoints(n) {
+      const avant = score;
+      score += n;
+      scoreEl.textContent = score;
+      const paliers = Math.floor(score / POMMES_PAR_OBSTACLE) - Math.floor(avant / POMMES_PAR_OBSTACLE);
+      for (let i = 0; i < paliers; i++) nouvelObstacle();
+    }
+
+    function activer(type) {
+      if (type === 'or') ajouterPoints(3);
+      if (type === 'mini') serpent.length = Math.max(2, serpent.length - 4);
+      const duree = SUPER_POMMES[type].duree;
+      // Un effet immédiat s'affiche brièvement, sans couper un pouvoir encore actif
+      if (!duree && pouvoir && SUPER_POMMES[pouvoir.type].duree) return;
+      pouvoir = { type, tours: duree || 12 };
+      afficherPouvoir(type);
+    }
+
+    function afficherPouvoir(type) {
+      pouvoirEl.textContent = type ? SUPER_POMMES[type].nom : '';
+      pouvoirEl.style.color = type ? SUPER_POMMES[type].couleur : '';
     }
 
     // Un rocher n'apparaît jamais sur le serpent, la pomme, près de la tête, ni juste devant elle
@@ -99,7 +157,7 @@
       const tete = serpent[0];
       let p;
       do { p = caseAuHasard(); } while (
-        occupe(serpent, p) || occupe(obstacles, p) || (pomme && p.x === pomme.x && p.y === pomme.y) ||
+        occupe(serpent, p) || occupe(obstacles, p) || surCase(p, pomme) || surCase(p, superPomme) ||
         Math.abs(p.x - tete.x) + Math.abs(p.y - tete.y) < 4 || devantLaTete(p)
       );
       obstacles.push(p);
@@ -111,6 +169,9 @@
       fileDirs = [];
       obstacles = [];
       pomme = null;
+      superPomme = null;
+      pouvoir = null;
+      afficherPouvoir(null);
       for (let i = 0; i < OBSTACLES_DEPART; i++) nouvelObstacle();
       pomme = nouvellePomme();
       score = 0;
@@ -123,7 +184,8 @@
     // Le serpent accélère au fur et à mesure des pommes mangées
     function planifier() {
       clearTimeout(boucle);
-      boucle = setTimeout(tour, Math.max(100, 200 - score * 2));
+      const ralenti = pouvoir && pouvoir.type === 'glace' ? 100 : 0;
+      boucle = setTimeout(tour, Math.max(100, 200 - score * 2) + ralenti);
     }
 
     function tour() {
@@ -132,16 +194,29 @@
 
       const horsGrille = tete.x < 0 || tete.y < 0 || tete.x >= CASES || tete.y >= CASES;
       const surLuiMeme = serpent.slice(0, -1).some(s => s.x === tete.x && s.y === tete.y);
-      if (horsGrille || surLuiMeme || occupe(obstacles, tete)) return perdu();
+      const fantome = pouvoir && pouvoir.type === 'fantome'; // traverse les rochers et son propre corps
+      if (horsGrille || (!fantome && (surLuiMeme || occupe(obstacles, tete)))) return perdu();
 
       serpent.unshift(tete);
-      if (tete.x === pomme.x && tete.y === pomme.y) {
-        score++;
-        scoreEl.textContent = score;
-        if (score % POMMES_PAR_OBSTACLE === 0) nouvelObstacle();
+      if (surCase(tete, pomme)) {
+        ajouterPoints(1);
         pomme = nouvellePomme();
+        if (!superPomme && Math.random() < CHANCE_SUPER_POMME) nouvelleSuperPomme();
       } else {
         serpent.pop();
+      }
+
+      if (surCase(tete, superPomme)) {
+        const type = superPomme.type;
+        superPomme = null;
+        activer(type);
+      } else if (superPomme && --superPomme.vie <= 0) {
+        superPomme = null;
+      }
+
+      if (pouvoir && --pouvoir.tours <= 0) {
+        pouvoir = null;
+        afficherPouvoir(null);
       }
       dessiner();
       planifier();
@@ -159,6 +234,20 @@
       ctx.beginPath();
       ctx.arc(pomme.x * T + T / 2, pomme.y * T + T / 2, T / 2 - 2, 0, Math.PI * 2);
       ctx.fill();
+      // La super pomme a un halo blanc et clignote quand elle va bientôt disparaître
+      if (superPomme && (superPomme.vie > 12 || superPomme.vie % 2)) {
+        const cx = superPomme.x * T + T / 2, cy = superPomme.y * T + T / 2;
+        ctx.fillStyle = SUPER_POMMES[superPomme.type].couleur;
+        ctx.beginPath();
+        ctx.arc(cx, cy, T / 2 - 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      // Le serpent devient transparent en mode fantôme, et clignote juste avant la fin
+      const fantome = pouvoir && pouvoir.type === 'fantome';
+      ctx.globalAlpha = fantome ? (pouvoir.tours > 8 || pouvoir.tours % 2 ? 0.45 : 0.85) : 1;
       serpent.forEach((s, i) => {
         // Arc-en-ciel : chaque anneau décale la teinte de 30°, la tête est plus claire
         ctx.fillStyle = `hsl(${(i * 30) % 360}, 85%, ${i === 0 ? 70 : 55}%)`;
@@ -166,11 +255,13 @@
         ctx.roundRect(s.x * T + 1, s.y * T + 1, T - 2, T - 2, 5);
         ctx.fill();
       });
+      ctx.globalAlpha = 1;
     }
 
     function perdu() {
       enJeu = false;
       clearTimeout(boucle);
+      afficherPouvoir(null);
       const nouveau = score > record;
       if (nouveau) {
         record = score;
