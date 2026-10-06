@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
   <title>Le Serpent</title>
   <style>
-    :root { --bg: #0f172a; --fg: #f8fafc; --muted: #94a3b8; --serpent: #a855f7; --pomme: #f43f5e; --grille: #1e293b; }
+    :root { --bg: #0f172a; --fg: #f8fafc; --muted: #94a3b8; --serpent: #22c55e; --pomme: #f43f5e; --grille: #1e293b; }
     * { box-sizing: border-box; }
     body {
       margin: 0; min-height: 100vh; background: var(--bg); color: var(--fg);
@@ -24,7 +24,7 @@
     p { margin: 0; color: var(--muted); }
     button {
       font: inherit; font-weight: 700; border: 0; border-radius: 999px; cursor: pointer;
-      background: var(--serpent); color: #3b0764; font-size: 20px; padding: 14px 32px;
+      background: var(--serpent); color: #052e16; font-size: 20px; padding: 14px 32px;
     }
     #croix { display: grid; grid-template-columns: repeat(3, 64px); grid-template-rows: repeat(2, 56px); gap: 8px; }
     #croix button { border-radius: 14px; padding: 0; font-size: 24px; background: var(--grille); color: var(--fg); }
@@ -44,7 +44,7 @@
     <canvas id="jeu" width="400" height="400"></canvas>
     <div id="ecran">
       <h1>🐍 Le Serpent</h1>
-      <p>Mange les pommes sans te cogner.<br>Flèches du clavier, ou glisse le doigt sur mobile.</p>
+      <p>Mange les pommes sans te cogner<br>contre les murs ni les rochers.<br>Flèches du clavier, ou glisse le doigt sur mobile.</p>
       <button id="jouer">Jouer</button>
     </div>
   </div>
@@ -66,23 +66,52 @@
     const T = canvas.width / CASES; // taille d'une case en pixels
     const DIRS = { haut: [0, -1], bas: [0, 1], gauche: [-1, 0], droite: [1, 0] };
 
-    let serpent, dir, fileDirs, pomme, score, boucle, enJeu = false;
+    let serpent, dir, fileDirs, pomme, obstacles, score, boucle, enJeu = false;
     let record = 0;
     try { record = Number(localStorage.getItem('record-serpent')) || 0; } catch (e) {}
     recordEl.textContent = record;
 
+    const OBSTACLES_DEPART = 6;
+    const POMMES_PAR_OBSTACLE = 5; // un rocher de plus toutes les 5 pommes
+
+    const occupe = (liste, p) => liste.some(s => s.x === p.x && s.y === p.y);
+
+    function caseAuHasard() {
+      return { x: Math.floor(Math.random() * CASES), y: Math.floor(Math.random() * CASES) };
+    }
+
     function nouvellePomme() {
       let p;
-      do {
-        p = { x: Math.floor(Math.random() * CASES), y: Math.floor(Math.random() * CASES) };
-      } while (serpent.some(s => s.x === p.x && s.y === p.y));
+      do { p = caseAuHasard(); } while (occupe(serpent, p) || occupe(obstacles, p));
       return p;
+    }
+
+    // Un rocher n'apparaît jamais sur le serpent, la pomme, près de la tête, ni juste devant elle
+    function devantLaTete(p) {
+      const tete = serpent[0];
+      for (let k = 1; k <= 8; k++) {
+        if (p.x === tete.x + dir[0] * k && p.y === tete.y + dir[1] * k) return true;
+      }
+      return false;
+    }
+
+    function nouvelObstacle() {
+      const tete = serpent[0];
+      let p;
+      do { p = caseAuHasard(); } while (
+        occupe(serpent, p) || occupe(obstacles, p) || (pomme && p.x === pomme.x && p.y === pomme.y) ||
+        Math.abs(p.x - tete.x) + Math.abs(p.y - tete.y) < 4 || devantLaTete(p)
+      );
+      obstacles.push(p);
     }
 
     function demarrer() {
       serpent = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
       dir = DIRS.droite;
       fileDirs = [];
+      obstacles = [];
+      pomme = null;
+      for (let i = 0; i < OBSTACLES_DEPART; i++) nouvelObstacle();
       pomme = nouvellePomme();
       score = 0;
       scoreEl.textContent = score;
@@ -103,12 +132,13 @@
 
       const horsGrille = tete.x < 0 || tete.y < 0 || tete.x >= CASES || tete.y >= CASES;
       const surLuiMeme = serpent.slice(0, -1).some(s => s.x === tete.x && s.y === tete.y);
-      if (horsGrille || surLuiMeme) return perdu();
+      if (horsGrille || surLuiMeme || occupe(obstacles, tete)) return perdu();
 
       serpent.unshift(tete);
       if (tete.x === pomme.x && tete.y === pomme.y) {
         score++;
         scoreEl.textContent = score;
+        if (score % POMMES_PAR_OBSTACLE === 0) nouvelObstacle();
         pomme = nouvellePomme();
       } else {
         serpent.pop();
@@ -119,12 +149,19 @@
 
     function dessiner() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#64748b';
+      obstacles.forEach(o => {
+        ctx.beginPath();
+        ctx.roundRect(o.x * T + 1, o.y * T + 1, T - 2, T - 2, 3);
+        ctx.fill();
+      });
       ctx.fillStyle = '#f43f5e';
       ctx.beginPath();
       ctx.arc(pomme.x * T + T / 2, pomme.y * T + T / 2, T / 2 - 2, 0, Math.PI * 2);
       ctx.fill();
       serpent.forEach((s, i) => {
-        ctx.fillStyle = i === 0 ? '#d8b4fe' : '#a855f7';
+        // Arc-en-ciel : chaque anneau décale la teinte de 30°, la tête est plus claire
+        ctx.fillStyle = `hsl(${(i * 30) % 360}, 85%, ${i === 0 ? 70 : 55}%)`;
         ctx.beginPath();
         ctx.roundRect(s.x * T + 1, s.y * T + 1, T - 2, T - 2, 5);
         ctx.fill();
